@@ -1,9 +1,12 @@
 package main
 
 import (
+	"io/ioutil"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -56,17 +59,86 @@ func (app *AppConfig) makeUI() (*widget.Entry, *widget.RichText) {
 
 func (app *AppConfig) createMenuItems(win fyne.Window) {
 
-	openMenuItem := fyne.NewMenuItem("Open...", func() {
-
-	})
+	openMenuItem := fyne.NewMenuItem("Open...", app.openFunc(win))
 
 	saveMenuItem := fyne.NewMenuItem("Save", func() {})
 
-	saveAsMenuItem := fyne.NewMenuItem("Save as...", func() {})
+	app.SaveMenuItem = saveMenuItem
+	app.SaveMenuItem.Disabled = true
+	saveAsMenuItem := fyne.NewMenuItem("Save as...", app.saveAsFunc(win))
 
 	fileMenu := fyne.NewMenu("File", openMenuItem, saveMenuItem, saveAsMenuItem)
 
 	menu := fyne.NewMainMenu(fileMenu)
 
 	win.SetMainMenu(menu)
+}
+
+func (app *AppConfig) openFunc(win fyne.Window) func() {
+	return func() {
+
+		openDialog := dialog.NewFileOpen(func(read fyne.URIReadCloser, err error) {
+
+			if err != nil {
+				dialog.ShowError(err, win)
+				return
+			}
+
+			if read == nil {
+				return
+			}
+
+			defer read.Close()
+
+			data, err := ioutil.ReadAll(read)
+
+			if err != nil {
+				dialog.ShowError(err, win)
+				return
+			}
+
+			app.EditWidget.SetText(string(data))
+
+			app.CurrentFile = read.URI()
+
+			win.SetTitle(win.Title() + " - " + read.URI().Name())
+
+			app.SaveMenuItem.Disabled = false
+
+		}, win)
+
+		openDialog.Show()
+	}
+}
+
+func (app *AppConfig) saveAsFunc(win fyne.Window) func() {
+
+	return func() {
+		saveDialog := dialog.NewFileSave(func(write fyne.URIWriteCloser, err error) {
+
+			if err != nil {
+				dialog.ShowError(err, win)
+
+				return
+			}
+
+			if write == nil {
+				//user cancelled
+				return
+			}
+
+			//save file
+			write.Write([]byte(app.EditWidget.Text))
+
+			app.CurrentFile = write.URI()
+
+			defer write.Close()
+
+			win.SetTitle(win.Title() + " - " + write.URI().Name())
+
+			app.SaveMenuItem.Disabled = false
+		}, win)
+
+		saveDialog.Show()
+	}
 }
